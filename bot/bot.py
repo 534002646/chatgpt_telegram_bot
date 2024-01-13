@@ -390,7 +390,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
             return
         else:
             raise
-
+    print(f"image_url = {image_urls}")
     # token usage
     db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + db.get_user_attribute(user_id, "n_generated_images"))
 

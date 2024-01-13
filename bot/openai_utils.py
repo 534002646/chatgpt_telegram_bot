@@ -145,7 +145,7 @@ async def transcribe_audio(audio_file) -> str:
 #                     'image_url': {'url':encode_image(image_file), 'detail':config.vision_detail } }]
 #     return gpt.send_message_stream(content, dialog_messages, chat_mode) or ""
 
-async def generate_images(prompt):
+async def generate_images(prompt: str):
     r = await openai.images.generate(
         prompt=prompt, 
         n=config.return_n_generated_images, 
@@ -153,7 +153,7 @@ async def generate_images(prompt):
         quality=config.image_quality,
         style=config.image_style,
         size=config.image_size)
-    return r.data[0].url
+    return [item.url for item in r.data]
 
 async def generate_speech(text: str):
     response = await openai.audio.speech.create(

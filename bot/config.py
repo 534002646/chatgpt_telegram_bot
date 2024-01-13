@@ -30,7 +30,7 @@ tts_model = config_yaml.get("tts_model", "tts-1")
 tts_voice = config_yaml.get("tts_voice", "alloy")
 vision_detail = config_yaml.get("vision_detail", "这张图片里有什么")
 
-n_chat_modes_per_page = config_yaml.get("n_chat_modes_per_page", 5)
+n_chat_modes_per_page = config_yaml.get("n_chat_modes_per_page", 1)
 mongodb_uri = config_env['MONGODB_URI']
 
 # chat_modes
