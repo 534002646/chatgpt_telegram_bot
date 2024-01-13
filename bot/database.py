@@ -45,7 +45,7 @@ class Database:
 
             "current_dialog_id": None,
             "current_chat_mode": "assistant",
-            "current_model": config.models["available_text_models"][0],
+            "current_model": config.default_model,
 
             "n_used_tokens": {},
 

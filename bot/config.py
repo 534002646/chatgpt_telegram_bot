@@ -2,6 +2,8 @@ import yaml
 import dotenv
 from pathlib import Path
 
+default_model = "gpt-4-1106-preview"
+
 config_dir = Path(__file__).parent.parent.resolve() / "config"
 
 # load yaml config

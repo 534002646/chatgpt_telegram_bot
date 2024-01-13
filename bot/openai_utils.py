@@ -26,8 +26,8 @@ openai = AsyncOpenAI(
 )
 
 class ChatGPT:
-    def __init__(self, model="gpt-4-1106-preview"):
-        assert model in {"text-davinci-003", "gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview"}, f"未知模型： {model}"
+    def __init__(self, model=config.default_model):
+        assert model in config.models["available_text_models"], f"未知模型： {model}"
         self.model = model
 
     def _generate_prompt(self, message, dialog_messages, chat_mode):
@@ -100,7 +100,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in {"gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview"}:
+                if self.model in config.models["available_text_models"]:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
                     common_args = {
                         'model': self.model,

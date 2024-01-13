@@ -85,13 +85,13 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
         user_semaphores[user.id] = asyncio.Semaphore(1)
 
     if db.get_user_attribute(user.id, "current_model") is None:
-        db.set_user_attribute(user.id, "current_model", config.models["available_text_models"][0])
+        db.set_user_attribute(user.id, "current_model", config.default_model)
 
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
     if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
         new_n_used_tokens = {
-            "gpt-4-1106-preview": {
+            config.default_model: {
                 "n_input_tokens": 0,
                 "n_output_tokens": n_used_tokens
             }
@@ -383,7 +383,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
 
     try:
         image_urls = await openai_utils.generate_images(message)
-    except openai.error.InvalidRequestError as e:
+    except Exception as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
             text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。\n您在那里写了什么，是吗？"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
