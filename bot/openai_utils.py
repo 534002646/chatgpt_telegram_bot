@@ -104,7 +104,7 @@ class ChatGPT:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
                     common_args = {
                         'model': self.model,
-                        'messages': {'role':'user', 'content':messages},
+                        'messages': messages,
                         'temperature': 1,
                         'n': 1,
                         'max_tokens': 2400,
