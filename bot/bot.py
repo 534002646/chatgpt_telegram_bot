@@ -319,14 +319,14 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
+    user_id = update.message.from_user.id
+    prompt = update.message.caption
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+
     current_model = db.get_user_attribute(user_id, "current_model")
     if "vision" not in current_model:
         text = f"🥲 当前模型<b>{current_model}<b>不支持发送图片."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-    user_id = update.message.from_user.id
-    prompt = update.message.caption
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     photo = update.message.effective_attachment[-1]
     photo_file = await context.bot.get_file(photo.file_id)
