@@ -328,16 +328,14 @@ async def photo_message_handle(update: Update, context: CallbackContext):
         text = f"🥲 当前模型<b>{current_model}<b>不支持发送图片."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
-    photo = update.message.effective_attachment[-1]
-    photo_file = await context.bot.get_file(photo.file_id)
+    photo = update.message.photo
+    photo_file = await context.bot.get_file(photo[-1].file_id)
     temp_file = io.BytesIO(await photo_file.download_as_bytearray())
     temp_file_png = io.BytesIO()
     original_image = Image.open(temp_file)
     original_image.save(temp_file_png, format='PNG')
     content = [{'type':'text', 'text':prompt}, {'type':'image_url', \
                     'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
-    # update n_transcribed_seconds
-    db.set_user_attribute(user_id, "n_transcribed_seconds", photo.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
     
     await message_handle(update, context, message=content)
 
