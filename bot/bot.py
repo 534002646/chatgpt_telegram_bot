@@ -47,6 +47,7 @@ HELP_MESSAGE = """Commands:
 ✅ /audio - 生成语言
 ✅ /settings – 显示设置
 ✅ /balance – 显示使用统计
+✅ /cancel - 取消任务
 ✅ /help – 显示帮助
 """
 
@@ -101,10 +102,15 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     # voice message transcription
     if db.get_user_attribute(user.id, "n_transcribed_seconds") is None:
         db.set_user_attribute(user.id, "n_transcribed_seconds", 0.0)
-
     # image generation
     if db.get_user_attribute(user.id, "n_generated_images") is None:
         db.set_user_attribute(user.id, "n_generated_images", 0)
+    # tts
+    if db.get_user_attribute(user.id, "tts-1") is None:
+        db.set_user_attribute(user.id, "tts-1", 0)
+    #tts-hd
+    if db.get_user_attribute(user.id, "tts-1-hd") is None:
+        db.set_user_attribute(user.id, "tts-1-hd", 0)
 
 
 async def is_bot_mentioned(update: Update, context: CallbackContext):
@@ -320,7 +326,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    prompt = update.message.caption or config.vision_detail
+    prompt = update.message.caption or "请问图片里有什么？"
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     current_model = db.get_user_attribute(user_id, "current_model")
@@ -335,8 +341,10 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     temp_file_png = io.BytesIO()
     original_image = Image.open(temp_file)
     original_image.save(temp_file_png, format='PNG')
+    
     content = [{'type':'text', 'text': prompt}, {'type':'image_url', \
                     'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
+    
     await message_handle(update, context, message=content)
 
 
@@ -363,7 +371,6 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     transcribed_text = await openai_utils.transcribe_audio(buf)
     text = f"🎤: <i>{transcribed_text}</i>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
     # update n_transcribed_seconds
     db.set_user_attribute(user_id, "n_transcribed_seconds", voice.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
 
@@ -378,17 +385,21 @@ async def generate_audio_handle(update: Update, context: CallbackContext, messag
 
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
-    message = message or update.message.text.replace("/audio","")
+
+    message = message or update.message.text.replace("/audio","").strip()
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 请输入/audio <b>生成的语言的文字内容<b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/audio <b>生成的语言的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
         return
      
     audio_file = await openai_utils.generate_audio(text=message)
+     # token usage
+    db.set_user_attribute(user_id, config.tts_model, db.get_user_attribute(user_id, config.tts_model) + len(message))
 
     await update.effective_message.reply_voice(
         reply_to_message_id=update.message.message_id,
         voice=audio_file
     )
+    audio_file.close()
 
 async def generate_image_handle(update: Update, context: CallbackContext, message=None):
     await register_user_if_not_exists(update, context, update.message.from_user)
@@ -397,7 +408,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-    message = message or update.message.text.replace("/img","")
+    message = message or update.message.text.replace("/img","").strip()
 
     if message is None or len(message) == 0:
         await update.message.reply_text("🥲 请输入/img <b>生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
@@ -606,6 +617,9 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     n_used_tokens_dict = db.get_user_attribute(user_id, "n_used_tokens")
     n_generated_images = db.get_user_attribute(user_id, "n_generated_images")
     n_transcribed_seconds = db.get_user_attribute(user_id, "n_transcribed_seconds")
+    n_tts_used_tokens = db.get_user_attribute(user_id, "tts-1")
+    n_tts_hd_used_tokens = db.get_user_attribute(user_id, "tts-1-hd")
+
 
     details_text = "🏷️ 详细信息:\n"
     for model_key in sorted(n_used_tokens_dict.keys()):
@@ -631,6 +645,20 @@ async def show_balance_handle(update: Update, context: CallbackContext):
         details_text += f"- Whisper (voice recognition): <b>{voice_recognition_n_spent_dollars:.03f}$</b> / <b>{n_transcribed_seconds:.01f} seconds</b>\n"
 
     total_n_spent_dollars += voice_recognition_n_spent_dollars
+
+    # tts
+    tts_spent_dollars = config.models["info"]["tts-1"]["price_per_1000_input_tokens"] * (n_tts_used_tokens / 1000)
+    if n_tts_used_tokens != 0:
+        details_text += f"- tts-1: <b>{tts_spent_dollars:.03f}$</b> / <b>{n_tts_used_tokens} tokens</b>\n"
+    
+    total_n_spent_dollars += tts_spent_dollars
+
+    # tts-hd
+    tts_hd_spent_dollars = config.models["info"]["tts-1-hd"]["price_per_1000_input_tokens"] * (n_tts_hd_used_tokens / 1000)
+    if n_tts_used_tokens != 0:
+        details_text += f"- tts-1-hd: <b>{tts_hd_spent_dollars:.03f}$</b> / <b>{n_tts_hd_used_tokens} tokens</b>\n"
+    total_n_spent_dollars += tts_hd_spent_dollars
+  
 
 
     text = f"你花了 <b>{total_n_spent_dollars:.03f}$</b>\n"
@@ -680,6 +708,7 @@ async def post_init(application: Application):
         BotCommand("/audio", "生成语言"),
         BotCommand("/balance", "显示使用统计"),
         BotCommand("/settings", "显示设置"),
+        BotCommand("/cancel", "取消任务"),
         BotCommand("/help", "显示帮助"),
     ])
 

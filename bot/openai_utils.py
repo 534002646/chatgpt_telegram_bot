@@ -5,6 +5,7 @@ from openai import AsyncOpenAI
 import io
 import base64
 import logging
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -52,34 +53,63 @@ class ChatGPT:
     def _count_tokens_from_messages(self, messages, answer, model=config.default_model):
         try:
             encoding = tiktoken.encoding_for_model(model)
-            if model == "gpt-3.5-turbo-16k":
+            if "gpt-3.5" in model:
                 tokens_per_message = 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
                 tokens_per_name = -1  # if there's a name, the role is omitted
-            elif model == "gpt-4-1106-preview":
-                tokens_per_message = 3
-                tokens_per_name = 1
-            elif model == "gpt-4-vision-preview":
+            elif "gpt-4" in model:
                 tokens_per_message = 3
                 tokens_per_name = 1
             else:
                 raise ValueError(f"未知模型： {model}")
-
             # input
             n_input_tokens = 0
             for message in messages:
                 n_input_tokens += tokens_per_message
                 for key, value in message.items():
-                    n_input_tokens += len(encoding.encode(str(value)))
-                    if key == "name":
-                        n_input_tokens += tokens_per_name
+                    if key == 'content':
+                        if isinstance(value, str):
+                            n_input_tokens += len(encoding.encode(value))
+                        else:
+                            for msg in value:
+                                if msg['type'] == 'image_url':
+                                    image = decode_image(msg['image_url']['url'])
+                                    n_input_tokens += self.__count_tokens_vision(image, model)
+                                else:
+                                    n_input_tokens += len(encoding.encode(msg['text']))
+                    else:
+                        n_input_tokens += len(encoding.encode(value))
+                        if key == "name":
+                            n_input_tokens += tokens_per_name
 
-            n_input_tokens += 2
+            n_input_tokens += 3
             # output
             n_output_tokens = 1 + len(encoding.encode(str(answer)))
             return n_input_tokens, n_output_tokens
         except Exception as e:  # too many tokens
            logger.error(f"统计tokens出现异常. {e}")
         return 0,0
+    
+    def __count_tokens_vision(self, image_bytes: bytes, model=config.default_model) -> int:
+        image_file = io.BytesIO(image_bytes)
+        image = Image.open(image_file)
+        if "gpt-4" not in model:
+            return 0
+        w, h = image.size
+        if w > h: w, h = h, w
+        base_tokens = 85
+        detail = config.vision_detail
+        if detail == 'low':
+            return base_tokens
+        elif detail == 'high' or detail == 'auto': # assuming worst cost for auto
+            f = max(w / 768, h / 2048)
+            if f > 1:
+                w, h = int(w / f), int(h / f)
+            tw, th = (w + 511) // 512, (h + 511) // 512
+            tiles = tw * th
+            num_tokens = base_tokens + tiles * 170
+            return num_tokens
+        else:
+           return 0
         
     async def send_message_stream(self, message, dialog_messages=[], chat_mode="assistant"):
         if chat_mode not in config.chat_modes.keys():

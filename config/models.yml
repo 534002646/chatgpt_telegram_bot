@@ -51,3 +51,11 @@ info:
   whisper:
     type: audio
     price_per_1_min: 0.006
+  
+  tts-1:
+    type: audio
+    price_per_1000_input_tokens: 0.015
+
+  tts-1-hd:
+    type: audio
+    price_per_1000_input_tokens: 0.03
