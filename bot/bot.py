@@ -40,12 +40,12 @@ user_semaphores = {}
 user_tasks = {}
 
 HELP_MESSAGE = """Commands:
-⚪ /retry – 重新生成最后一个答案
-⚪ /new – 开始新对话
-⚪ /mode – 选择角色预设
-⚪ /settings – 显示设置
-⚪ /balance – 显示使用统计
-⚪ /help – 显示帮助
+✅ /retry – 重新生成最后一个答案
+✅ /new – 开始新对话
+✅ /mode – 选择角色预设
+✅ /settings – 显示设置
+✅ /balance – 显示使用统计
+✅ /help – 显示帮助
 """
 
 HELP_GROUP_CHAT_MESSAGE = """您可以将机器人添加到任何<b>群聊</b>中，以帮助和娱乐参与者！
@@ -173,6 +173,21 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
 
+async def img_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
+    # check if bot was mentioned (for group chats)
+    if not await is_bot_mentioned(update, context):
+        return
+
+    # check if message is edited
+    if update.edited_message is not None:
+        await edited_message_handle(update, context)
+        return
+
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    if await is_previous_message_not_answered_yet(update, context): return
+
+    await generate_image_handle(update, context, message=message)
+
 
 async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
     # check if bot was mentioned (for group chats)
@@ -196,9 +211,9 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     user_id = update.message.from_user.id
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
 
-    if chat_mode == "artist":
-        await generate_image_handle(update, context, message=message)
-        return
+    # if chat_mode == "artist":
+    #     await generate_image_handle(update, context, message=message)
+    #     return
 
     async def message_handle_fn():
         # new dialog timeout
@@ -637,6 +652,7 @@ async def post_init(application: Application):
         BotCommand("/new", "开始新对话"),
         BotCommand("/mode", "选择角色预设"),
         BotCommand("/retry", "重新生成最后一个答案"),
+        BotCommand("/img", "生成图片"),
         BotCommand("/balance", "显示使用统计"),
         BotCommand("/settings", "显示设置"),
         BotCommand("/help", "显示帮助"),
@@ -663,27 +679,25 @@ def run_bot() -> None:
         group_ids = [x for x in any_ids if x < 0]
         user_filter = filters.User(username=usernames) | filters.User(user_id=user_ids) | filters.Chat(chat_id=group_ids)
 
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
+    application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
+    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
+  # application.add_handler(MessageHandler(filters.PHOTO & user_filter, ))
+    
+    application.add_handler(CommandHandler("img", img_handle, filters=user_filter))
     application.add_handler(CommandHandler("start", start_handle, filters=user_filter))
     application.add_handler(CommandHandler("help", help_handle, filters=user_filter))
     application.add_handler(CommandHandler("help_group_chat", help_group_chat_handle, filters=user_filter))
-
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
     application.add_handler(CommandHandler("retry", retry_handle, filters=user_filter))
     application.add_handler(CommandHandler("new", new_dialog_handle, filters=user_filter))
     application.add_handler(CommandHandler("cancel", cancel_handle, filters=user_filter))
-
-    application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
-
-    # application.add_handler(MessageHandler(filters.PHOTO & user_filter, ))
-
+    application.add_handler(CommandHandler("settings", settings_handle, filters=user_filter))
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
+    application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
+
     application.add_handler(CallbackQueryHandler(show_chat_modes_callback_handle, pattern="^show_chat_modes"))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
-
-    application.add_handler(CommandHandler("settings", settings_handle, filters=user_filter))
     application.add_handler(CallbackQueryHandler(set_settings_handle, pattern="^set_settings"))
-
-    application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
 
     application.add_error_handler(error_handle)
 
