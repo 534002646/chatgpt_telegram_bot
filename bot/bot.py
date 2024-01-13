@@ -5,7 +5,6 @@ import traceback
 import html
 import json
 from datetime import datetime
-import openai
 from PIL import Image
 
 import telegram
@@ -45,6 +44,7 @@ HELP_MESSAGE = """Commands:
 ✅ /new – 开始新对话
 ✅ /mode – 选择角色预设
 ✅ /img - 生成图片
+✅ /audio - 生成语言
 ✅ /settings – 显示设置
 ✅ /balance – 显示使用统计
 ✅ /help – 显示帮助
@@ -320,13 +320,14 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    prompt = update.message.caption
+    prompt = update.message.caption or config.vision_detail
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     current_model = db.get_user_attribute(user_id, "current_model")
     if "vision" not in current_model:
         text = "🥲 当前模型不支持发送图片."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
 
     photo = update.message.photo
     photo_file = await context.bot.get_file(photo[-1].file_id)
@@ -334,7 +335,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     temp_file_png = io.BytesIO()
     original_image = Image.open(temp_file)
     original_image.save(temp_file_png, format='PNG')
-    content = [{'type':'text', 'text':prompt}, {'type':'image_url', \
+    content = [{'type':'text', 'text': prompt}, {'type':'image_url', \
                     'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
     await message_handle(update, context, message=content)
 
@@ -368,6 +369,26 @@ async def voice_message_handle(update: Update, context: CallbackContext):
 
     await message_handle(update, context, message=transcribed_text)
 
+async def generate_audio_handle(update: Update, context: CallbackContext, message=None):
+     # check if bot was mentioned (for group chats)
+    if not await is_bot_mentioned(update, context):
+        return
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    if await is_previous_message_not_answered_yet(update, context): return
+
+    user_id = update.message.from_user.id
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    message = message or update.message.text.replace("/audio","")
+    if message is None or len(message) == 0:
+        await update.message.reply_text("🥲 请输入/audio <b>生成的语言的文字内容<b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        return
+     
+    audio_file = await openai_utils.generate_audio(text=message)
+
+    await update.effective_message.reply_voice(
+        reply_to_message_id=update.message.message_id,
+        voice=audio_file
+    )
 
 async def generate_image_handle(update: Update, context: CallbackContext, message=None):
     await register_user_if_not_exists(update, context, update.message.from_user)
@@ -376,10 +397,10 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-    message = message or update.message.text
+    message = message or update.message.text.replace("/img","")
 
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 您发送了<b>空消息</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/img <b>生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
         return
     await update.message.chat.send_action(action="upload_photo")
 
@@ -656,6 +677,7 @@ async def post_init(application: Application):
         BotCommand("/mode", "选择角色预设"),
         BotCommand("/retry", "重新生成最后一个答案"),
         BotCommand("/img", "生成图片"),
+        BotCommand("/audio", "生成语言"),
         BotCommand("/balance", "显示使用统计"),
         BotCommand("/settings", "显示设置"),
         BotCommand("/help", "显示帮助"),
@@ -686,6 +708,7 @@ def run_bot() -> None:
     application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
     application.add_handler(MessageHandler(filters.PHOTO & user_filter, photo_message_handle))
     
+    application.add_handler(CommandHandler("audio", generate_audio_handle, filters=user_filter))
     application.add_handler(CommandHandler("img", generate_image_handle, filters=user_filter))
     application.add_handler(CommandHandler("start", start_handle, filters=user_filter))
     application.add_handler(CommandHandler("help", help_handle, filters=user_filter))

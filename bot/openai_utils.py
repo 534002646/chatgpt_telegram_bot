@@ -7,23 +7,8 @@ import base64
 import logging
 
 logger = logging.getLogger(__name__)
-# setup openai
-# openai.api_key = config.openai_api_key
-# if config.openai_api_base is not None:
-#     openai.api_base = config.openai_api_base
-
-
-OPENAI_COMPLETION_OPTIONS = {
-    "temperature": 0.7,
-    "max_tokens": 1000,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-    "request_timeout": 60.0,
-}
 
 openai = AsyncOpenAI(
-    # This is the default and can be omitted
     api_key=config.openai_api_key,
 )
 
@@ -64,36 +49,38 @@ class ChatGPT:
         answer = answer.strip()
         return answer
 
-    def _count_tokens_from_messages(self, messages, answer, model="gpt-3.5-turbo-16k"):
-        encoding = tiktoken.encoding_for_model(model)
-        if model == "gpt-3.5-turbo-16k":
-            tokens_per_message = 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            tokens_per_name = -1  # if there's a name, the role is omitted
-        elif model == "gpt-4-1106-preview":
-            tokens_per_message = 3
-            tokens_per_name = 1
-        elif model == "gpt-4-vision-preview":
-            tokens_per_message = 3
-            tokens_per_name = 1
-        else:
-            raise ValueError(f"未知模型： {model}")
+    def _count_tokens_from_messages(self, messages, answer, model=config.default_model):
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+            if model == "gpt-3.5-turbo-16k":
+                tokens_per_message = 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+                tokens_per_name = -1  # if there's a name, the role is omitted
+            elif model == "gpt-4-1106-preview":
+                tokens_per_message = 3
+                tokens_per_name = 1
+            elif model == "gpt-4-vision-preview":
+                tokens_per_message = 3
+                tokens_per_name = 1
+            else:
+                raise ValueError(f"未知模型： {model}")
 
-        # input
-        n_input_tokens = 0
-        for message in messages:
-            n_input_tokens += tokens_per_message
-            for key, value in message.items():
-                n_input_tokens += len(encoding.encode(value))
-                if key == "name":
-                    n_input_tokens += tokens_per_name
+            # input
+            n_input_tokens = 0
+            for message in messages:
+                n_input_tokens += tokens_per_message
+                for key, value in message.items():
+                    n_input_tokens += len(encoding.encode(str(value)))
+                    if key == "name":
+                        n_input_tokens += tokens_per_name
 
-        n_input_tokens += 2
-
-        # output
-        n_output_tokens = 1 + len(encoding.encode(answer))
-
-        return n_input_tokens, n_output_tokens
-
+            n_input_tokens += 2
+            # output
+            n_output_tokens = 1 + len(encoding.encode(str(answer)))
+            return n_input_tokens, n_output_tokens
+        except Exception as e:  # too many tokens
+           logger.error(f"统计tokens出现异常. {e}")
+        return 0,0
+        
     async def send_message_stream(self, message, dialog_messages=[], chat_mode="assistant"):
         if chat_mode not in config.chat_modes.keys():
             raise ValueError(f"Chat mode {chat_mode} is not supported")
@@ -104,7 +91,6 @@ class ChatGPT:
             try:
                 if self.model in config.models["available_text_models"]:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
-                    logger.info(f"提问内容：{messages}")
                     common_args = {
                         'model': self.model,
                         'messages': messages,
@@ -115,9 +101,10 @@ class ChatGPT:
                         'frequency_penalty': 0,
                         'stream': True
                     }
-                    r_gen = await openai.chat.completions.create(**common_args)
+                    # logger.error(f"提问内容：{common_args}")
+                    r = await openai.chat.completions.create(**common_args)
                     answer = ""
-                    async for r_item in r_gen:
+                    async for r_item in r:
                         delta = r_item.choices[0].delta
                         if delta.content:
                             answer += delta.content
@@ -126,7 +113,7 @@ class ChatGPT:
                             yield "not_finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
 
                 answer = self._postprocess_answer(answer)
-                logger.info(f"回答内容：{answer}")
+                # logger.error(f"回答内容：{answer}")
             except Exception as e:  # too many tokens
                 if len(dialog_messages) == 0:
                     raise e
@@ -136,19 +123,12 @@ class ChatGPT:
 
         yield "finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed  # sending final answer
 
-#语言翻译
+#语音翻译
 async def transcribe_audio(audio_file) -> str:
     r = await openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
     return r.text or ""
 
-#图片翻译
-# async def transcribe_images(prompt, image_file, gpt:ChatGPT, dialog_messages, chat_mode) -> str:
-#     if "vision" not in gpt.model:
-#         raise ValueError(f"Chat mode {chat_mode} is not supported")
-#     content = [{'type':'text', 'text':prompt}, {'type':'image_url', \
-#                     'image_url': {'url':encode_image(image_file), 'detail':config.vision_detail } }]
-#     return gpt.send_message_stream(content, dialog_messages, chat_mode) or ""
-
+#生成图片
 async def generate_images(prompt: str):
     r = await openai.images.generate(
         prompt=prompt, 
@@ -159,15 +139,16 @@ async def generate_images(prompt: str):
         size=config.image_size)
     return [item.url for item in r.data]
 
-async def generate_speech(text: str):
-    response = await openai.audio.speech.create(
+#生成语言
+async def generate_audio(text: str):
+    r = await openai.audio.speech.create(
         model=config.tts_model,
         voice=config.tts_voice,
         input=text,
         response_format='opus'
     )
     temp_file = io.BytesIO()
-    temp_file.write(response.read())
+    temp_file.write(r.read())
     temp_file.seek(0)
     return temp_file
 

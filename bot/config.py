@@ -25,16 +25,17 @@ image_model = config_yaml.get("image_model", "dall-e-3")
 image_quality = config_yaml.get("image_quality", "standard")
 image_style = config_yaml.get("image_style", "vivid")
 image_size = config_yaml.get("image_size", "512x512")
-# whisper_prompt = config_yaml.get("whisper_prompt", "")
+
 tts_model = config_yaml.get("tts_model", "tts-1")
 tts_voice = config_yaml.get("tts_voice", "alloy")
-vision_detail = config_yaml.get("vision_detail", "这张图片里有什么")
+
+vision_detail = config_yaml.get("vision_detail", "请问这张图片里有什么？")
 
 n_chat_modes_per_page = config_yaml.get("n_chat_modes_per_page", 1)
 mongodb_uri = config_env['MONGODB_URI']
 
 # chat_modes
-with open(config_dir / "chat_modes.yml", 'rb') as f:
+with open(config_dir / "chat_modes.yml", 'r') as f:
     chat_modes = yaml.safe_load(f)
 
 # models
