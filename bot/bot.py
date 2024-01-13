@@ -6,6 +6,7 @@ import html
 import json
 from datetime import datetime
 import openai
+from PIL import Image
 
 import telegram
 from telegram import (
@@ -43,6 +44,7 @@ HELP_MESSAGE = """Commands:
 ✅ /retry – 重新生成最后一个答案
 ✅ /new – 开始新对话
 ✅ /mode – 选择角色预设
+✅ /img - 生成图片
 ✅ /settings – 显示设置
 ✅ /balance – 显示使用统计
 ✅ /help – 显示帮助
@@ -173,21 +175,6 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
 
-async def img_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
-    # check if bot was mentioned (for group chats)
-    if not await is_bot_mentioned(update, context):
-        return
-
-    # check if message is edited
-    if update.edited_message is not None:
-        await edited_message_handle(update, context)
-        return
-
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    if await is_previous_message_not_answered_yet(update, context): return
-
-    await generate_image_handle(update, context, message=message)
-
 
 async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
     # check if bot was mentioned (for group chats)
@@ -245,20 +232,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             }[config.chat_modes[chat_mode]["parse_mode"]]
 
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
-            if config.enable_message_streaming:
-                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode)
-            else:
-                answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = await chatgpt_instance.send_message(
-                    _message,
-                    dialog_messages=dialog_messages,
-                    chat_mode=chat_mode
-                )
-
-                async def fake_gen():
-                    yield "finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
-
-                gen = fake_gen()
-
+            gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode)
             prev_answer = ""
             async for gen_item in gen:
                 status, answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = gen_item
@@ -336,6 +310,36 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
         return True
     else:
         return False
+    
+async def photo_message_handle(update: Update, context: CallbackContext):
+    # check if bot was mentioned (for group chats)
+    if not await is_bot_mentioned(update, context):
+        return
+
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    if await is_previous_message_not_answered_yet(update, context): return
+
+    current_model = db.get_user_attribute(user_id, "current_model")
+    if "vision" not in current_model:
+        text = f"🥲 当前模型<b>{current_model}<b>不支持发送图片."
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    user_id = update.message.from_user.id
+    prompt = update.message.caption
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+
+    photo = update.message.effective_attachment[-1]
+    photo_file = await context.bot.get_file(photo.file_id)
+    temp_file = io.BytesIO(await photo_file.download_as_bytearray())
+    temp_file_png = io.BytesIO()
+    original_image = Image.open(temp_file)
+    original_image.save(temp_file_png, format='PNG')
+    content = [{'type':'text', 'text':prompt}, {'type':'image_url', \
+                    'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
+    # update n_transcribed_seconds
+    db.set_user_attribute(user_id, "n_transcribed_seconds", photo.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
+    
+    await message_handle(update, context, message=content)
 
 
 async def voice_message_handle(update: Update, context: CallbackContext):
@@ -380,7 +384,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     message = message or update.message.text
 
     try:
-        image_urls = await openai_utils.generate_images(message, n_images=config.return_n_generated_images, size=config.image_size)
+        image_urls = await openai_utils.generate_images(message)
     except openai.error.InvalidRequestError as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
             text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。\n您在那里写了什么，是吗？"
@@ -681,10 +685,9 @@ def run_bot() -> None:
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
     application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
-    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
-  # application.add_handler(MessageHandler(filters.PHOTO & user_filter, ))
+    application.add_handler(MessageHandler(filters.PHOTO & user_filter, photo_message_handle))
     
-    application.add_handler(CommandHandler("img", img_handle, filters=user_filter))
+    application.add_handler(CommandHandler("img", generate_image_handle, filters=user_filter))
     application.add_handler(CommandHandler("start", start_handle, filters=user_filter))
     application.add_handler(CommandHandler("help", help_handle, filters=user_filter))
     application.add_handler(CommandHandler("help_group_chat", help_group_chat_handle, filters=user_filter))
@@ -700,7 +703,6 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(set_settings_handle, pattern="^set_settings"))
 
     application.add_error_handler(error_handle)
-
     # start the bot
     application.run_polling()
 
