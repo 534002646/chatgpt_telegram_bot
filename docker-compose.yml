@@ -15,6 +15,7 @@ services:
     command: python3 bot/bot.py
     restart: always
     network_mode: "host"
+    image: chatgpt_telegram_bot
     build:
       context: "."
       dockerfile: Dockerfile
