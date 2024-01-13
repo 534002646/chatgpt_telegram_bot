@@ -377,9 +377,12 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-    await update.message.chat.send_action(action="upload_photo")
-
     message = message or update.message.text
+
+    if message is None or len(message) == 0:
+        await update.message.reply_text("🥲 您发送了<b>空消息</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        return
+    await update.message.chat.send_action(action="upload_photo")
 
     try:
         image_urls = await openai_utils.generate_images(message)
@@ -390,7 +393,6 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
             return
         else:
             raise
-    print(f"image_url = {image_urls}")
     # token usage
     db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + db.get_user_attribute(user_id, "n_generated_images"))
 
