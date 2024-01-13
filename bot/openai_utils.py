@@ -4,7 +4,9 @@ import tiktoken
 from openai import AsyncOpenAI
 import io
 import base64
+import logging
 
+logger = logging.getLogger(__name__)
 # setup openai
 # openai.api_key = config.openai_api_key
 # if config.openai_api_base is not None:
@@ -102,6 +104,7 @@ class ChatGPT:
             try:
                 if self.model in config.models["available_text_models"]:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
+                    logger.info(f"提问内容：{messages}")
                     common_args = {
                         'model': self.model,
                         'messages': messages,
@@ -123,6 +126,7 @@ class ChatGPT:
                             yield "not_finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
 
                 answer = self._postprocess_answer(answer)
+                logger.info(f"回答内容：{answer}")
             except Exception as e:  # too many tokens
                 if len(dialog_messages) == 0:
                     raise e

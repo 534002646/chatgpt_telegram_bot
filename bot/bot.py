@@ -325,7 +325,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
 
     current_model = db.get_user_attribute(user_id, "current_model")
     if "vision" not in current_model:
-        text = f"🥲 当前模型<b>{current_model}<b>不支持发送图片."
+        text = "🥲 当前模型不支持发送图片."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     photo = update.message.photo
@@ -336,7 +336,6 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     original_image.save(temp_file_png, format='PNG')
     content = [{'type':'text', 'text':prompt}, {'type':'image_url', \
                     'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
-    
     await message_handle(update, context, message=content)
 
 
