@@ -44,7 +44,7 @@ HELP_MESSAGE = """Commands:
 ✅ /new – 开始新对话
 ✅ /mode – 选择角色预设
 ✅ /img – 生成图片
-✅ /audio – 生成语言
+✅ /audio – 生成语音
 ✅ /model – 显示模型选择
 ✅ /balance – 显示使用统计
 ✅ /cancel – 取消任务
@@ -763,7 +763,7 @@ async def post_init(application: Application):
         BotCommand("/mode", "选择角色预设"),
         BotCommand("/retry", "重新生成最后一个答案"),
         BotCommand("/img", "生成图片"),
-        BotCommand("/audio", "生成语言"),
+        BotCommand("/audio", "生成语音"),
         BotCommand("/balance", "显示使用统计"),
         BotCommand("/model", "显示模型选择"),
         BotCommand("/cancel", "取消任务"),
