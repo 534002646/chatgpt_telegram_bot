@@ -582,7 +582,6 @@ async def set_model_handle(update: Update, context: CallbackContext):
 
     text, reply_markup = get_model_menu(user_id)
     try:
-        await update.message.chat.send_action(action=ChatAction.TYPING)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except telegram.error.BadRequest as e:
         if str(e).startswith("Message is not modified"):
@@ -617,7 +616,6 @@ async def set_audio_model_handle(update: Update, context: CallbackContext):
 
     text, reply_markup = get_audio_model_menu(user_id)
     try:
-        await update.message.chat.send_action(action=ChatAction.TYPING)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except telegram.error.BadRequest as e:
         if str(e).startswith("Message is not modified"):
@@ -652,7 +650,6 @@ async def set_image_model_handle(update: Update, context: CallbackContext):
 
     text, reply_markup = get_image_model_menu(user_id)
     try:
-        await update.message.chat.send_action(action=ChatAction.TYPING)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except telegram.error.BadRequest as e:
         if str(e).startswith("Message is not modified"):
