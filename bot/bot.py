@@ -45,7 +45,7 @@ HELP_MESSAGE = """Commands:
 ✅ /mode – 选择角色预设
 ✅ /img - 生成图片
 ✅ /audio - 生成语言
-✅ /settings – 显示设置
+✅ /model – 显示模型选择
 ✅ /balance – 显示使用统计
 ✅ /cancel - 取消任务
 ✅ /help – 显示帮助
@@ -87,6 +87,10 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 
     if db.get_user_attribute(user.id, "current_model") is None:
         db.set_user_attribute(user.id, "current_model", config.default_model)
+    if db.get_user_attribute(user.id, "current_audio_model") is None:
+        db.set_user_attribute(user.id, "current_audio_model", config.default_audio_model)
+    if db.get_user_attribute(user.id, "current_image_model") is None:
+        db.set_user_attribute(user.id, "current_image_model", config.default_image_model)
 
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
@@ -103,14 +107,13 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     if db.get_user_attribute(user.id, "n_transcribed_seconds") is None:
         db.set_user_attribute(user.id, "n_transcribed_seconds", 0.0)
     # image generation
-    if db.get_user_attribute(user.id, "n_generated_images") is None:
-        db.set_user_attribute(user.id, "n_generated_images", 0)
+    for model_key in config.models["available_image_models"]:
+        if db.get_user_attribute(user.id, model_key) is None:
+            db.set_user_attribute(user.id, model_key, 0)
     # tts
-    if db.get_user_attribute(user.id, "tts-1") is None:
-        db.set_user_attribute(user.id, "tts-1", 0)
-    #tts-hd
-    if db.get_user_attribute(user.id, "tts-1-hd") is None:
-        db.set_user_attribute(user.id, "tts-1-hd", 0)
+    for model_key in config.models["available_audio_models"]:
+        if db.get_user_attribute(user.id, model_key) is None:
+            db.set_user_attribute(user.id, model_key, 0)
 
 
 async def is_bot_mentioned(update: Update, context: CallbackContext):
@@ -131,7 +134,7 @@ async def is_bot_mentioned(update: Update, context: CallbackContext):
      else:
          return False
 
-
+# 开始
 async def start_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
@@ -141,29 +144,30 @@ async def start_handle(update: Update, context: CallbackContext):
 
     reply_text = "你好！ 我是使用 OpenAI API 实现的 <b>ChatGPT</b> 机器人 🤖\n\n"
     reply_text += HELP_MESSAGE
-
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
     await show_chat_modes_handle(update, context)
 
-
+# 帮助
 async def help_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.HTML)
 
-
+# 群组帮助
 async def help_group_chat_handle(update: Update, context: CallbackContext):
      await register_user_if_not_exists(update, context, update.message.from_user)
      user_id = update.message.from_user.id
      db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
      text = HELP_GROUP_CHAT_MESSAGE.format(bot_username="@" + context.bot.username)
-
+     await update.message.chat.send_action(action=ChatAction.TYPING)
      await update.message.reply_text(text, parse_mode=ParseMode.HTML)
      await update.message.reply_video(config.help_group_chat_video_path)
 
-
+# 重新回答最后一条消息的
 async def retry_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
@@ -182,6 +186,7 @@ async def retry_handle(update: Update, context: CallbackContext):
     await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
 
 
+# 发送消息处理
 async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
@@ -204,10 +209,6 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     user_id = update.message.from_user.id
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
 
-    # if chat_mode == "artist":
-    #     await generate_image_handle(update, context, message=message)
-    #     return
-
     async def message_handle_fn():
         # new dialog timeout
         if use_new_dialog_timeout:
@@ -222,10 +223,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
         try:
             # send placeholder message to user
-            placeholder_message = await update.message.reply_text("...")
-
-            # send typing action
-            await update.message.chat.send_action(action="typing")
+            placeholder_message = await update.message.reply_text("Loading...")
 
             if _message is None or len(_message) == 0:
                  await update.message.reply_text("🥲 您发送了<b>空消息</b>。 请再试一次！", parse_mode=ParseMode.HTML)
@@ -240,15 +238,13 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
             gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode)
             prev_answer = ""
+            await update.message.chat.send_action(action=ChatAction.TYPING)
             async for gen_item in gen:
                 status, answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = gen_item
-
                 answer = answer[:4096]  # telegram message limit
-
                 # update only when 100 new symbols are ready
                 if abs(len(answer) - len(prev_answer)) < 100 and status != "finished":
                     continue
-
                 try:
                     await context.bot.edit_message_text(answer, chat_id=placeholder_message.chat_id, message_id=placeholder_message.message_id, parse_mode=parse_mode)
                 except telegram.error.BadRequest as e:
@@ -304,7 +300,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             if user_id in user_tasks:
                 del user_tasks[user_id]
 
-
+# 多消息验证
 async def is_previous_message_not_answered_yet(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
 
@@ -312,11 +308,13 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
     if user_semaphores[user_id].locked():
         text = "⏳ 请<b>等待</b>回复上一条消息\n"
         text += "或者你可以/cancel取消它"
+        await update.message.chat.send_action(action=ChatAction.TYPING)
         await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
         return True
     else:
         return False
-    
+
+# 解释图片
 async def photo_message_handle(update: Update, context: CallbackContext):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
@@ -347,7 +345,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     
     await message_handle(update, context, message=content)
 
-
+# 语音转文字
 async def voice_message_handle(update: Update, context: CallbackContext):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
@@ -376,6 +374,7 @@ async def voice_message_handle(update: Update, context: CallbackContext):
 
     await message_handle(update, context, message=transcribed_text)
 
+# 文字转语音
 async def generate_audio_handle(update: Update, context: CallbackContext, message=None):
      # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
@@ -388,19 +387,21 @@ async def generate_audio_handle(update: Update, context: CallbackContext, messag
 
     message = message or update.message.text.replace("/audio","").strip()
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 请输入/audio <b>生成的语言的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/audio <b>需要生成语音的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
         return
-     
-    audio_file = await openai_utils.generate_audio(text=message)
+    current_model = db.get_user_attribute(user_id, "current_audio_model")
+    audio_file = await openai_utils.generate_audio(message, current_model)
      # token usage
-    db.set_user_attribute(user_id, config.tts_model, db.get_user_attribute(user_id, config.tts_model) + len(message))
+    db.set_user_attribute(user_id, current_model, db.get_user_attribute(user_id, current_model) + len(message))
 
+    await update.message.chat.send_action(action=ChatAction.UPLOAD_VOICE)
     await update.effective_message.reply_voice(
         reply_to_message_id=update.message.message_id,
         voice=audio_file
     )
     audio_file.close()
 
+# 图片生成
 async def generate_image_handle(update: Update, context: CallbackContext, message=None):
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
@@ -411,27 +412,26 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     message = message or update.message.text.replace("/img","").strip()
 
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 请输入/img <b>生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/img <b>需要生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
         return
-    await update.message.chat.send_action(action="upload_photo")
-
+    current_model = db.get_user_attribute(user_id, "current_image_model")
     try:
-        image_urls = await openai_utils.generate_images(message)
+        image_urls = await openai_utils.generate_images(message, current_model)
     except Exception as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
-            text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。\n您在那里写了什么，是吗？"
+            text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
         else:
             raise
     # token usage
-    db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + db.get_user_attribute(user_id, "n_generated_images"))
+    db.set_user_attribute(user_id, current_model, config.return_n_generated_images + db.get_user_attribute(user_id, current_model))
 
     for i, image_url in enumerate(image_urls):
-        await update.message.chat.send_action(action="upload_photo")
+        await update.message.chat.send_action(action=ChatAction.UPLOAD_PHOTO)
         await update.message.reply_photo(image_url, parse_mode=ParseMode.HTML)
 
-
+# 开始新对话
 async def new_dialog_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
@@ -440,12 +440,13 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     db.start_new_dialog(user_id)
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await update.message.reply_text("开始新对话 ✅")
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
     await update.message.reply_text(f"{config.chat_modes[chat_mode]['welcome_message']}", parse_mode=ParseMode.HTML)
 
-
+# 取消对话任务
 async def cancel_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
 
@@ -456,9 +457,10 @@ async def cancel_handle(update: Update, context: CallbackContext):
         task = user_tasks[user_id]
         task.cancel()
     else:
+        await update.message.chat.send_action(action=ChatAction.TYPING)
         await update.message.reply_text("<i>没有什么可以取消...</i>", parse_mode=ParseMode.HTML)
 
-
+# 获取角色预设菜单
 def get_chat_mode_menu(page_index: int):
     n_chat_modes_per_page = config.n_chat_modes_per_page
     text = f"选择 <b>聊天模式</b> ({len(config.chat_modes)} 可用模式):"
@@ -495,7 +497,7 @@ def get_chat_mode_menu(page_index: int):
 
     return text, reply_markup
 
-
+# 显示角色预设菜单
 async def show_chat_modes_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
@@ -504,6 +506,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     text, reply_markup = get_chat_mode_menu(0)
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
@@ -523,12 +526,13 @@ async def show_chat_modes_callback_handle(update: Update, context: CallbackConte
 
      text, reply_markup = get_chat_mode_menu(page_index)
      try:
+         await update.message.chat.send_action(action=ChatAction.TYPING)
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
      except telegram.error.BadRequest as e:
          if str(e).startswith("Message is not modified"):
              pass
 
-
+# 设置角色预设
 async def set_chat_mode_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
     user_id = update.callback_query.from_user.id
@@ -540,25 +544,17 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
     db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
     db.start_new_dialog(user_id)
-
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await context.bot.send_message(
         update.callback_query.message.chat.id,
         f"{config.chat_modes[chat_mode]['welcome_message']}",
         parse_mode=ParseMode.HTML
     )
 
-
-def get_settings_menu(user_id: int):
+# 获取模型选择菜单
+def get_model_menu(user_id: int):
     current_model = db.get_user_attribute(user_id, "current_model")
-    text = config.models["info"][current_model]["description"]
-
-    text += "\n\n"
-    score_dict = config.models["info"][current_model]["scores"]
-    for score_key, score_value in score_dict.items():
-        text += "🟢" * score_value + "⚪️" * (5 - score_value) + f" – {score_key}\n\n"
-
-    text += "\n选择 <b>模型</b>:"
-
+    text = "\n选择GPT模型:"
     # buttons to choose models
     buttons = []
     for model_key in config.models["available_text_models"]:
@@ -567,25 +563,13 @@ def get_settings_menu(user_id: int):
             title = "✅ " + title
 
         buttons.append(
-            InlineKeyboardButton(title, callback_data=f"set_settings|{model_key}")
+            InlineKeyboardButton(title, callback_data=f"set_model|{model_key}")
         )
     reply_markup = InlineKeyboardMarkup([buttons])
-
     return text, reply_markup
 
-
-async def settings_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    if await is_previous_message_not_answered_yet(update, context): return
-
-    user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
-
-    text, reply_markup = get_settings_menu(user_id)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-
-
-async def set_settings_handle(update: Update, context: CallbackContext):
+# 设置模型选择菜单
+async def set_model_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
     user_id = update.callback_query.from_user.id
 
@@ -596,14 +580,102 @@ async def set_settings_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, "current_model", model_key)
     db.start_new_dialog(user_id)
 
-    text, reply_markup = get_settings_menu(user_id)
+    text, reply_markup = get_model_menu(user_id)
     try:
+        await update.message.chat.send_action(action=ChatAction.TYPING)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except telegram.error.BadRequest as e:
         if str(e).startswith("Message is not modified"):
             pass
 
+def get_audio_model_menu(user_id: int):
+    current_model = db.get_user_attribute(user_id, "current_audio_model")
+    text = "\n选择语音模型:"
+    # buttons to choose models
+    buttons = []
+    for model_key in config.models["available_audio_models"]:
+        title = config.models["info"][model_key]["name"]
+        if model_key == current_model:
+            title = "✅ " + title
 
+        buttons.append(
+            InlineKeyboardButton(title, callback_data=f"set_audio_model|{model_key}")
+        )
+    reply_markup = InlineKeyboardMarkup([buttons])
+    return text, reply_markup
+
+# 设置模型选择菜单
+async def set_audio_model_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
+    user_id = update.callback_query.from_user.id
+
+    query = update.callback_query
+    await query.answer()
+
+    _, model_key = query.data.split("|")
+    db.set_user_attribute(user_id, "current_audio_model", model_key)
+
+    text, reply_markup = get_audio_model_menu(user_id)
+    try:
+        await update.message.chat.send_action(action=ChatAction.TYPING)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    except telegram.error.BadRequest as e:
+        if str(e).startswith("Message is not modified"):
+            pass
+
+def get_image_model_menu(user_id: int):
+    current_model = db.get_user_attribute(user_id, "current_image_model")
+    text = "\n选择图像模型:"
+    # buttons to choose models
+    buttons = []
+    for model_key in config.models["available_image_models"]:
+        title = config.models["info"][model_key]["name"]
+        if model_key == current_model:
+            title = "✅ " + title
+
+        buttons.append(
+            InlineKeyboardButton(title, callback_data=f"set_image_model|{model_key}")
+        )
+    reply_markup = InlineKeyboardMarkup([buttons])
+    return text, reply_markup
+
+# 设置模型选择菜单
+async def set_image_model_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
+    user_id = update.callback_query.from_user.id
+
+    query = update.callback_query
+    await query.answer()
+
+    _, model_key = query.data.split("|")
+    db.set_user_attribute(user_id, "current_image_model", model_key)
+
+    text, reply_markup = get_image_model_menu(user_id)
+    try:
+        await update.message.chat.send_action(action=ChatAction.TYPING)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    except telegram.error.BadRequest as e:
+        if str(e).startswith("Message is not modified"):
+            pass
+
+# 显示模型选择菜单
+async def show_model_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    if await is_previous_message_not_answered_yet(update, context): return
+
+    user_id = update.message.from_user.id
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    await update.message.chat.send_action(action=ChatAction.TYPING)
+    text, reply_markup = get_model_menu(user_id)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+    text, reply_markup = get_image_model_menu(user_id)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+    text, reply_markup = get_audio_model_menu(user_id)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+# 显示用量
 async def show_balance_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
 
@@ -615,11 +687,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     total_n_used_tokens = 0
 
     n_used_tokens_dict = db.get_user_attribute(user_id, "n_used_tokens")
-    n_generated_images = db.get_user_attribute(user_id, "n_generated_images")
     n_transcribed_seconds = db.get_user_attribute(user_id, "n_transcribed_seconds")
-    n_tts_used_tokens = db.get_user_attribute(user_id, "tts-1")
-    n_tts_hd_used_tokens = db.get_user_attribute(user_id, "tts-1-hd")
-
 
     details_text = "🏷️ 详细信息:\n"
     for model_key in sorted(n_used_tokens_dict.keys()):
@@ -629,51 +697,45 @@ async def show_balance_handle(update: Update, context: CallbackContext):
         n_input_spent_dollars = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_input_tokens / 1000)
         n_output_spent_dollars = config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_output_tokens / 1000)
         total_n_spent_dollars += n_input_spent_dollars + n_output_spent_dollars
-
-        details_text += f"- {model_key}: <b>{n_input_spent_dollars + n_output_spent_dollars:.03f}$</b> / <b>{n_input_tokens + n_output_tokens} tokens</b>\n"
-
+        name = config.models["info"][model_key]["name"]
+        details_text += f"- {name}: <b>{n_input_spent_dollars + n_output_spent_dollars:.03f}$</b> / <b>{n_input_tokens + n_output_tokens} tokens</b>\n"
+    
     # image generation
-    image_generation_n_spent_dollars = config.models["info"]["dalle-3"]["price_per_1_image"] * n_generated_images
-    if n_generated_images != 0:
-        details_text += f"- DALL·E 3 (image generation): <b>{image_generation_n_spent_dollars:.03f}$</b> / <b>{n_generated_images} generated images</b>\n"
+    for model_key in config.models["available_image_models"]:
+        n_generated_images = db.get_user_attribute(user_id, model_key)
+        image_generation_n_spent_dollars = config.models["info"][model_key]["price_per_1_image"] * n_generated_images
+        total_n_spent_dollars += image_generation_n_spent_dollars
+        name = config.models["info"][model_key]["name"]
+        details_text += f"- {name}: <b>{image_generation_n_spent_dollars:.03f}$</b> / <b>{n_generated_images} generated images</b>\n"
 
-    total_n_spent_dollars += image_generation_n_spent_dollars
+     # tts
+    for model_key in config.models["available_audio_models"]:
+        n_tts_used_tokens = db.get_user_attribute(user_id, model_key)
+        tts_spent_dollars = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_tts_used_tokens / 1000)
+        total_n_spent_dollars += tts_spent_dollars
+        name = config.models["info"][model_key]["name"]
+        details_text += f"- {name}: <b>{tts_spent_dollars:.03f}$</b> / <b>{n_tts_used_tokens} tokens</b>\n"
 
     # voice recognition
     voice_recognition_n_spent_dollars = config.models["info"]["whisper"]["price_per_1_min"] * (n_transcribed_seconds / 60)
-    if n_transcribed_seconds != 0:
-        details_text += f"- Whisper (voice recognition): <b>{voice_recognition_n_spent_dollars:.03f}$</b> / <b>{n_transcribed_seconds:.01f} seconds</b>\n"
-
+    name = config.models["info"]["whisper"]["name"]
+    details_text += f"- {name}: <b>{voice_recognition_n_spent_dollars:.03f}$</b> / <b>{n_transcribed_seconds:.01f} seconds</b>\n"
     total_n_spent_dollars += voice_recognition_n_spent_dollars
-
-    # tts
-    tts_spent_dollars = config.models["info"]["tts-1"]["price_per_1000_input_tokens"] * (n_tts_used_tokens / 1000)
-    if n_tts_used_tokens != 0:
-        details_text += f"- tts-1: <b>{tts_spent_dollars:.03f}$</b> / <b>{n_tts_used_tokens} tokens</b>\n"
     
-    total_n_spent_dollars += tts_spent_dollars
-
-    # tts-hd
-    tts_hd_spent_dollars = config.models["info"]["tts-1-hd"]["price_per_1000_input_tokens"] * (n_tts_hd_used_tokens / 1000)
-    if n_tts_used_tokens != 0:
-        details_text += f"- tts-1-hd: <b>{tts_hd_spent_dollars:.03f}$</b> / <b>{n_tts_hd_used_tokens} tokens</b>\n"
-    total_n_spent_dollars += tts_hd_spent_dollars
-  
-
-
     text = f"你花了 <b>{total_n_spent_dollars:.03f}$</b>\n"
     text += f"你使用了 <b>{total_n_used_tokens}</b> tokens\n\n"
     text += details_text
-
+    await update.message.chat.send_action(action=ChatAction.TYPING)
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
-
+# 重新编辑消息
 async def edited_message_handle(update: Update, context: CallbackContext):
     if update.edited_message.chat.type == "private":
         text = "🥲 遗憾的是，不支持消息<b>编辑</b>"
+        await update.message.chat.send_action(action=ChatAction.TYPING)
         await update.edited_message.reply_text(text, parse_mode=ParseMode.HTML)
 
-
+# 错误处理
 async def error_handle(update: Update, context: CallbackContext) -> None:
     logger.error(msg="处理更新时出现异常：", exc_info=context.error)
 
@@ -688,7 +750,7 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
             "</pre>\n\n"
             f"<pre>{html.escape(tb_string)}</pre>"
         )
-
+        await update.message.chat.send_action(action=ChatAction.TYPING)
         # split text into multiple messages due to 4096 character limit
         for message_chunk in split_text_into_chunks(message, 4096):
             try:
@@ -707,7 +769,7 @@ async def post_init(application: Application):
         BotCommand("/img", "生成图片"),
         BotCommand("/audio", "生成语言"),
         BotCommand("/balance", "显示使用统计"),
-        BotCommand("/settings", "显示设置"),
+        BotCommand("/model", "显示模型选择"),
         BotCommand("/cancel", "取消任务"),
         BotCommand("/help", "显示帮助"),
     ])
@@ -735,7 +797,7 @@ def run_bot() -> None:
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
     application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
-    application.add_handler(MessageHandler(filters.PHOTO & user_filter, photo_message_handle))
+    application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & user_filter, photo_message_handle))
     
     application.add_handler(CommandHandler("audio", generate_audio_handle, filters=user_filter))
     application.add_handler(CommandHandler("img", generate_image_handle, filters=user_filter))
@@ -745,13 +807,15 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("retry", retry_handle, filters=user_filter))
     application.add_handler(CommandHandler("new", new_dialog_handle, filters=user_filter))
     application.add_handler(CommandHandler("cancel", cancel_handle, filters=user_filter))
-    application.add_handler(CommandHandler("settings", settings_handle, filters=user_filter))
+    application.add_handler(CommandHandler("model", show_model_handle, filters=user_filter))
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
 
     application.add_handler(CallbackQueryHandler(show_chat_modes_callback_handle, pattern="^show_chat_modes"))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
-    application.add_handler(CallbackQueryHandler(set_settings_handle, pattern="^set_settings"))
+    application.add_handler(CallbackQueryHandler(set_model_handle, pattern="^set_model"))
+    application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_model"))
+    application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_model"))
 
     application.add_error_handler(error_handle)
     # start the bot

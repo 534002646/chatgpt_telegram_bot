@@ -159,20 +159,20 @@ async def transcribe_audio(audio_file) -> str:
     return r.text or ""
 
 #生成图片
-async def generate_images(prompt: str):
+async def generate_images(prompt: str, model: str):
     r = await openai.images.generate(
         prompt=prompt, 
         n=config.return_n_generated_images, 
-        model=config.image_model,
+        model=model,
         quality=config.image_quality,
         style=config.image_style,
         size=config.image_size)
     return [item.url for item in r.data]
 
 #生成语言
-async def generate_audio(text: str):
+async def generate_audio(text: str, model: str):
     r = await openai.audio.speech.create(
-        model=config.tts_model,
+        model=model,
         voice=config.tts_voice,
         input=text,
         response_format='opus'
