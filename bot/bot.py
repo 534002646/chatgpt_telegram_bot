@@ -43,11 +43,11 @@ HELP_MESSAGE = """Commands:
 ✅ /retry – 重新生成最后一个答案
 ✅ /new – 开始新对话
 ✅ /mode – 选择角色预设
-✅ /img - 生成图片
-✅ /audio - 生成语言
+✅ /img – 生成图片
+✅ /audio – 生成语言
 ✅ /model – 显示模型选择
 ✅ /balance – 显示使用统计
-✅ /cancel - 取消任务
+✅ /cancel – 取消任务
 ✅ /help – 显示帮助
 """
 
