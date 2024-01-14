@@ -147,7 +147,6 @@ class ChatGPT:
             except Exception as e:  # too many tokens
                 if len(dialog_messages) == 0:
                     raise e
-
                 # forget first message in dialog_messages
                 dialog_messages = dialog_messages[1:]
 

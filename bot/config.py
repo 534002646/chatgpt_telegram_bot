@@ -28,12 +28,10 @@ image_style = config_yaml.get("image_style", "vivid")
 image_size = config_yaml.get("image_size", "512x512")
 
 tts_voice = config_yaml.get("tts_voice", "alloy")
-
 vision_detail = config_yaml.get("vision_detail", "auto")
-
 n_chat_modes_per_page = config_yaml.get("n_chat_modes_per_page", 1)
-
 mongodb_uri = config_env['MONGODB_URI']
+context_len = config_yaml.get("context_len", 5)
 
 # chat_modes
 with open(config_dir / "chat_modes.yml", 'r') as f:
