@@ -526,7 +526,6 @@ async def show_chat_modes_callback_handle(update: Update, context: CallbackConte
 
      text, reply_markup = get_chat_mode_menu(page_index)
      try:
-         await update.message.chat.send_action(action=ChatAction.TYPING)
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
      except telegram.error.BadRequest as e:
          if str(e).startswith("Message is not modified"):
@@ -544,7 +543,6 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
     db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
     db.start_new_dialog(user_id)
-    await update.message.chat.send_action(action=ChatAction.TYPING)
     await context.bot.send_message(
         update.callback_query.message.chat.id,
         f"{config.chat_modes[chat_mode]['welcome_message']}",
