@@ -187,7 +187,7 @@ async def retry_handle(update: Update, context: CallbackContext):
 
 
 # 发送消息处理
-async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
+async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True, reply_to_message=False):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
         return
@@ -223,7 +223,9 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
         try:
             # send placeholder message to user
-            placeholder_message = await update.message.reply_text("Loading...")
+            if reply_to_message:
+                placeholder_message = await update.message.reply_text("Loading...", reply_to_message_id=update.message.message_id)
+            else: placeholder_message = await update.message.reply_text("Loading...")
 
             if _message is None or len(_message) == 0:
                  await update.message.reply_text("🥲 您发送了<b>空消息</b>。 请再试一次！", parse_mode=ParseMode.HTML)
@@ -330,7 +332,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     current_model = db.get_user_attribute(user_id, "current_model")
     if "vision" not in current_model:
         text = "🥲 当前模型不支持发送图片."
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
         return
 
     photo = update.message.photo
@@ -343,7 +345,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     content = [{'type':'text', 'text': prompt}, {'type':'image_url', \
                     'image_url': {'url':openai_utils.encode_image(temp_file_png), 'detail':config.vision_detail } }]
     
-    await message_handle(update, context, message=content)
+    await message_handle(update, context, message=content, reply_to_message = True)
 
 # 语音转文字
 async def voice_message_handle(update: Update, context: CallbackContext):
@@ -368,11 +370,11 @@ async def voice_message_handle(update: Update, context: CallbackContext):
 
     transcribed_text = await openai_utils.transcribe_audio(buf)
     text = f"🎤: <i>{transcribed_text}</i>"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
     # update n_transcribed_seconds
     db.set_user_attribute(user_id, "n_transcribed_seconds", voice.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
 
-    await message_handle(update, context, message=transcribed_text)
+    await message_handle(update, context, message=transcribed_text, reply_to_message = True)
 
 # 文字转语音
 async def generate_audio_handle(update: Update, context: CallbackContext, message=None):
@@ -387,7 +389,7 @@ async def generate_audio_handle(update: Update, context: CallbackContext, messag
 
     message = message or update.message.text.replace("/audio","").strip()
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 请输入/audio <b>需要生成语音的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/audio <b>需要生成语音的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
         return
     current_model = db.get_user_attribute(user_id, "current_audio_model")
     audio_file = await openai_utils.generate_audio(message, current_model)
@@ -412,7 +414,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     message = message or update.message.text.replace("/img","").strip()
 
     if message is None or len(message) == 0:
-        await update.message.reply_text("🥲 请输入/img <b>需要生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("🥲 请输入/img <b>需要生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
         return
     current_model = db.get_user_attribute(user_id, "current_image_model")
     try:
@@ -420,7 +422,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     except Exception as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
             text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。"
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
             return
         else:
             raise
@@ -429,7 +431,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
 
     for i, image_url in enumerate(image_urls):
         await update.message.chat.send_action(action=ChatAction.UPLOAD_PHOTO)
-        await update.message.reply_photo(image_url, parse_mode=ParseMode.HTML)
+        await update.message.reply_photo(image_url, parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
 
 # 开始新对话
 async def new_dialog_handle(update: Update, context: CallbackContext):
@@ -745,7 +747,6 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
             "</pre>\n\n"
             f"<pre>{html.escape(tb_string)}</pre>"
         )
-        await update.message.chat.send_action(action=ChatAction.TYPING)
         # split text into multiple messages due to 4096 character limit
         for message_chunk in split_text_into_chunks(message, 4096):
             try:
