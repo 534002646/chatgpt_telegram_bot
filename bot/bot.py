@@ -793,7 +793,7 @@ def run_bot() -> None:
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & user_filter, message_handle))
     application.add_handler(MessageHandler(filters.VOICE & user_filter, voice_message_handle))
-    application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & user_filter, photo_message_handle))
+    application.add_handler(MessageHandler(filters.PHOTO & user_filter, photo_message_handle))
     
     application.add_handler(CommandHandler("audio", generate_audio_handle, filters=user_filter))
     application.add_handler(CommandHandler("img", generate_image_handle, filters=user_filter))
