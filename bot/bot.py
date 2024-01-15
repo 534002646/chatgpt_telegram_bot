@@ -871,7 +871,12 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(show_chat_modes_callback_handle, pattern="^show_chat_modes"))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
     application.add_handler(CallbackQueryHandler(set_model_handle, pattern="^set_model"))
+
     application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_model"))
+    application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_quality"))
+    application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_style"))
+    application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_size"))
+
     application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_model"))
     application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_style"))
 
