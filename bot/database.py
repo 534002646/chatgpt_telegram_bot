@@ -88,6 +88,7 @@ class Database:
         user_dict = self.user_collection.find_one({"_id": user_id})
         if key not in user_dict:
             return None
+        attribute_dict[user_id][key] = user_dict[key]
         return user_dict[key]
 
     def set_user_attribute(self, user_id: int, key: str, value: Any):
