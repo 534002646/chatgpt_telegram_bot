@@ -326,7 +326,7 @@ async def photo_message_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    prompt = update.message.caption or "请问图片里有什么？"
+    prompt = update.message.caption or config.vision_prompt
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     current_model = db.get_user_attribute(user_id, "current_model")

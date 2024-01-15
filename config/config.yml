@@ -11,6 +11,7 @@ image_style: "vivid" #图像风格
 image_size: "1024x1024" #512x512 1024x1024 1024x1792 1792x1024
 #解释图片
 vision_detail: "auto" #解释图片质量 low,high,auto
+vision_prompt: "图片里有什么？如果图片里有人请告诉我是谁，如果图片里地点请告诉我地点"
 #文字转语音
 tts_voice: "alloy" #语音风格 alloy echo fable onyx nova shimmer
 tts_voice_formats: "opus" #语音格式 mp3 opus aac flac
