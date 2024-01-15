@@ -5,6 +5,7 @@ import traceback
 import html
 import json
 import signal
+import asyncio
 from datetime import datetime
 from PIL import Image
 
@@ -832,8 +833,10 @@ async def post_init(application: Application):
         BotCommand("/help", "显示帮助"),
     ])
 
+application:Application
+
 def run_bot() -> None:
-    # proxy = 'http://127.0.0.1:10708'
+    global application
     application = (
         ApplicationBuilder()
         .token(config.telegram_token)
@@ -842,10 +845,8 @@ def run_bot() -> None:
         .http_version("1.1")
         .get_updates_http_version("1.1")
         .post_init(post_init)
-        # .proxy(proxy)
         .build()
     )
-
     # add handlers
     user_filter = filters.ALL
     if len(config.allowed_telegram_usernames) > 0:
@@ -884,13 +885,22 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_style"))
 
     application.add_error_handler(error_handle)
-    signal.signal(signal.SIGTERM, exitHandler(application = application))
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     # start the bot
     application.run_polling()
 
-def exitHandler(signum, frame, application:Application):
-    application.shutdown()
-    print("退出程序. signum = ", signum)
+def signal_handler(signum, frame):
+    loop = asyncio.get_event_loop()
+    loop.create_task(exitHandler(signum, frame))
 
+async def exitHandler(signum, frame):
+    db.client.close()
+    application.stop_running()
+    await application.stop()
+    await application.shutdown()
+    print("退出程序. signum = ", signum)
+    
 if __name__ == "__main__":
     run_bot()
