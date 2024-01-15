@@ -153,15 +153,15 @@ class ChatGPT:
         yield "finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed  # sending final answer
 
 #语音翻译
-async def transcribe_audio(audio_file) -> str:
-    r = await openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
+async def transcribe_audio(audio_buf) -> str:
+    r = await openai.audio.transcriptions.create(model="whisper-1", file=audio_buf)
     return r.text or ""
 
 #生成图片
 async def generate_images(prompt: str, model: str):
     r = await openai.images.generate(
         prompt=prompt, 
-        n=config.return_n_generated_images, 
+        n=config.image_count,
         model=model,
         quality=config.image_quality,
         style=config.image_style,
@@ -174,7 +174,7 @@ async def generate_audio(text: str, model: str):
         model=model,
         voice=config.tts_voice,
         input=text,
-        response_format='opus'
+        response_format=config.tts_voice_formats
     )
     temp_file = io.BytesIO()
     temp_file.write(r.read())

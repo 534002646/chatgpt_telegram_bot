@@ -3,9 +3,10 @@ from typing import Optional, Any
 import pymongo
 import uuid
 from datetime import datetime
-
+from collections import defaultdict
 import config
 
+attribute_dict = defaultdict(defaultdict)
 
 class Database:
     def __init__(self):
@@ -82,16 +83,17 @@ class Database:
 
     def get_user_attribute(self, user_id: int, key: str):
         self.check_if_user_exists(user_id, raise_exception=True)
+        if key in attribute_dict[user_id]:
+            return attribute_dict[user_id][key]
         user_dict = self.user_collection.find_one({"_id": user_id})
-
         if key not in user_dict:
             return None
-
         return user_dict[key]
 
     def set_user_attribute(self, user_id: int, key: str, value: Any):
         self.check_if_user_exists(user_id, raise_exception=True)
         self.user_collection.update_one({"_id": user_id}, {"$set": {key: value}})
+        attribute_dict[user_id][key] = value
 
     def update_n_used_tokens(self, user_id: int, model: str, n_input_tokens: int, n_output_tokens: int):
         n_used_tokens_dict = self.get_user_attribute(user_id, "n_used_tokens")

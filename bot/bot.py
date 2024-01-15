@@ -374,7 +374,7 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     # update n_transcribed_seconds
     db.set_user_attribute(user_id, "n_transcribed_seconds", voice.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
 
-    await message_handle(update, context, message=transcribed_text, reply_to_message = True)
+    await message_handle(update, context, message=transcribed_text, reply_to_message=True)
 
 # 文字转语音
 async def generate_audio_handle(update: Update, context: CallbackContext, message=None):
@@ -771,6 +771,7 @@ async def post_init(application: Application):
     ])
 
 def run_bot() -> None:
+    # proxy = 'http://127.0.0.1:10708'
     application = (
         ApplicationBuilder()
         .token(config.telegram_token)
@@ -779,6 +780,7 @@ def run_bot() -> None:
         .http_version("1.1")
         .get_updates_http_version("1.1")
         .post_init(post_init)
+        # .proxy(proxy)
         .build()
     )
 
