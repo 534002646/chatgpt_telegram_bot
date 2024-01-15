@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 user_semaphores = {}
 user_tasks = {}
 
+time_format = "%Y-%m-%d %H:%M:%S"
+
 HELP_MESSAGE = """Commands:
 ✅ /retry – 重新生成最后一个答案
 ✅ /new – 开始新对话
@@ -792,7 +794,7 @@ async def edited_message_handle(update: Update, context: CallbackContext):
 
 # 错误处理
 async def error_handle(update: Update, context: CallbackContext) -> None:
-    logger.error(msg="处理更新时引发异常：", exc_info=context.error)
+    logger.error(msg=f"{datetime.now().strftime(time_format)} 处理更新时引发异常：", exc_info=context.error)
     if update is None:
         return
     try:
