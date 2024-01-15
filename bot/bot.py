@@ -793,7 +793,7 @@ async def edited_message_handle(update: Update, context: CallbackContext):
 # 错误处理
 async def error_handle(update: Update, context: CallbackContext) -> None:
     logger.error(msg="处理更新时引发异常：", exc_info=context.error)
-    if update.effective_chat is None:
+    if update is None:
         return
     try:
         # collect error message
