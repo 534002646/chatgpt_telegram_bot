@@ -434,14 +434,14 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     try:
         image_urls = await openai_utils.generate_images(message, current_model, current_image_quality, current_image_style, current_image_size)
     except Exception as e:
-        if str(e).startswith("Your request was rejected as a result of our safety system"):
+        if "Your request was rejected as a result of our safety system" in str(e):
             text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
             return
         else:
             raise
     # token usage
-    db.set_user_attribute(user_id, current_model, config.return_n_generated_images + db.get_user_attribute(user_id, current_model))
+    db.set_user_attribute(user_id, current_model, config.image_count + db.get_user_attribute(user_id, current_model))
 
     for i, image_url in enumerate(image_urls):
         await update.message.chat.send_action(action=ChatAction.UPLOAD_PHOTO)
