@@ -87,8 +87,13 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 
     if db.get_user_attribute(user.id, "current_model") is None:
         db.set_user_attribute(user.id, "current_model", config.default_model)
+
     if db.get_user_attribute(user.id, "current_audio_model") is None:
         db.set_user_attribute(user.id, "current_audio_model", config.default_audio_model)
+
+    if db.get_user_attribute(user.id, "current_audio_style") is None:
+        db.set_user_attribute(user.id, "current_audio_style", config.tts_voice)
+
     if db.get_user_attribute(user.id, "current_image_model") is None:
         db.set_user_attribute(user.id, "current_image_model", config.default_image_model)
 
@@ -392,7 +397,8 @@ async def generate_audio_handle(update: Update, context: CallbackContext, messag
         await update.message.reply_text("🥲 请输入/audio <b>需要生成语音的文字内容</b>。 请再试一次！", parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
         return
     current_model = db.get_user_attribute(user_id, "current_audio_model")
-    audio_file = await openai_utils.generate_audio(message, current_model)
+    current_audio_style = db.get_user_attribute(user_id, "current_audio_style")
+    audio_file = await openai_utils.generate_audio(message, current_model, current_audio_style)
      # token usage
     db.set_user_attribute(user_id, current_model, db.get_user_attribute(user_id, current_model) + len(message))
 
@@ -512,7 +518,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
-async def show_chat_modes_callback_handle(update: Update, context: CallbackContext):
+async def show_chat_modes_handle(update: Update, context: CallbackContext):
      await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
      if await is_previous_message_not_answered_yet(update.callback_query, context): return
 
@@ -589,7 +595,8 @@ async def set_model_handle(update: Update, context: CallbackContext):
 
 def get_audio_model_menu(user_id: int):
     current_model = db.get_user_attribute(user_id, "current_audio_model")
-    text = "\n选择语音模型:"
+    current_style = db.get_user_attribute(user_id, "current_audio_style")
+    text = "\n选择语音模型或语音风格:"
     # buttons to choose models
     buttons = []
     for model_key in config.models["available_audio_models"]:
@@ -599,6 +606,13 @@ def get_audio_model_menu(user_id: int):
 
         buttons.append(
             InlineKeyboardButton(title, callback_data=f"set_audio_model|{model_key}")
+        )
+    for model_key in config.models["available_audio_style"]:
+        title = model_key
+        if model_key == current_style:
+            title = "✅ " + model_key
+        buttons.append(
+            InlineKeyboardButton(title, callback_data=f"set_audio_style|{model_key}")
         )
     reply_markup = InlineKeyboardMarkup([buttons])
     return text, reply_markup
@@ -611,8 +625,11 @@ async def set_audio_model_handle(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
-    _, model_key = query.data.split("|")
-    db.set_user_attribute(user_id, "current_audio_model", model_key)
+    title, value = query.data.split("|")
+    if "model" in title:
+        db.set_user_attribute(user_id, "current_audio_model", value)
+    if "style" in title:
+        db.set_user_attribute(user_id, "current_audio_style", value)
 
     text, reply_markup = get_audio_model_menu(user_id)
     try:
@@ -809,7 +826,7 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
 
-    application.add_handler(CallbackQueryHandler(show_chat_modes_callback_handle, pattern="^show_chat_modes"))
+    application.add_handler(CallbackQueryHandler(show_chat_modes_handle, pattern="^show_chat_modes"))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
     application.add_handler(CallbackQueryHandler(set_model_handle, pattern="^set_model"))
     application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_model"))

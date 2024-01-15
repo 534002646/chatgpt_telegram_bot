@@ -1,7 +1,10 @@
 available_text_models: ["gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview"]
 available_image_models: ["dall-e-2", "dall-e-3"]
+available_image_quality: ["standard", "hd"]
+available_image_style: ["vivid", "natural"]
+available_image_size: ["1024x1024", "1024x1792", "1792x1024"]
 available_audio_models: ["tts-1", "tts-1-hd"]
-
+available_audio_style: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
 info:
   gpt-3.5-turbo-16k:
     type: chat_completion

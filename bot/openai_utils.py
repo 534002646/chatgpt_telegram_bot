@@ -169,10 +169,10 @@ async def generate_images(prompt: str, model: str):
     return [item.url for item in r.data]
 
 #生成语言
-async def generate_audio(text: str, model: str):
+async def generate_audio(text: str, model: str, current_audio_style: str):
     r = await openai.audio.speech.create(
         model=model,
-        voice=config.tts_voice,
+        voice=current_audio_style,
         input=text,
         response_format=config.tts_voice_formats
     )
