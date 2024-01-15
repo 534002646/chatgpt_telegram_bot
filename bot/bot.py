@@ -86,22 +86,27 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
         user_semaphores[user.id] = asyncio.Semaphore(1)
 
     if db.get_user_attribute(user.id, "current_model") is None:
-        db.set_user_attribute(user.id, "current_model", config.default_model)
+        db.set_user_attribute(user.id, "current_model", config.chat_default_model)
 
     if db.get_user_attribute(user.id, "current_audio_model") is None:
-        db.set_user_attribute(user.id, "current_audio_model", config.default_audio_model)
-
+        db.set_user_attribute(user.id, "current_audio_model", config.tts_default_model)
     if db.get_user_attribute(user.id, "current_audio_style") is None:
         db.set_user_attribute(user.id, "current_audio_style", config.tts_voice)
 
     if db.get_user_attribute(user.id, "current_image_model") is None:
-        db.set_user_attribute(user.id, "current_image_model", config.default_image_model)
+        db.set_user_attribute(user.id, "current_image_model", config.image_default_model)
+    if db.get_user_attribute(user.id, "current_image_quality") is None:
+        db.set_user_attribute(user.id, "current_image_quality", config.image_quality)
+    if db.get_user_attribute(user.id, "current_image_style") is None:
+        db.set_user_attribute(user.id, "current_image_style", config.image_style)
+    if db.get_user_attribute(user.id, "current_image_size") is None:
+        db.set_user_attribute(user.id, "current_image_size", config.image_size)
 
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
     if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
         new_n_used_tokens = {
-            config.default_model: {
+            config.chat_default_model: {
                 "n_input_tokens": 0,
                 "n_output_tokens": n_used_tokens
             }
@@ -423,8 +428,11 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
         await update.message.reply_text("🥲 请输入/img <b>需要生成的图片描述内容</b>。 请再试一次！", parse_mode=ParseMode.HTML, reply_to_message_id=update.message.message_id)
         return
     current_model = db.get_user_attribute(user_id, "current_image_model")
+    current_image_quality = db.get_user_attribute(user_id, "current_image_quality")
+    current_image_style = db.get_user_attribute(user_id, "current_image_style")
+    current_image_size = db.get_user_attribute(user_id, "current_image_size")
     try:
-        image_urls = await openai_utils.generate_images(message, current_model)
+        image_urls = await openai_utils.generate_images(message, current_model, current_image_quality, current_image_style, current_image_size)
     except Exception as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
             text = "🥲 您的请求<b>不符合</b> OpenAI 的使用政策。"
@@ -596,9 +604,8 @@ async def set_model_handle(update: Update, context: CallbackContext):
 def get_audio_model_menu(user_id: int):
     current_model = db.get_user_attribute(user_id, "current_audio_model")
     current_style = db.get_user_attribute(user_id, "current_audio_style")
-    text = "\n选择语音模型或语音风格:"
+    text = "\n选择语音模型和语音风格:"
     # buttons to choose models
-    all_buttons = []
     buttons1 = []
     for model_key in config.models["available_audio_models"]:
         title = config.models["info"][model_key]["name"]
@@ -615,9 +622,7 @@ def get_audio_model_menu(user_id: int):
         buttons2.append(
             InlineKeyboardButton(title, callback_data=f"set_audio_style|{model_key}")
         )
-    all_buttons.append(buttons1)
-    all_buttons.append(buttons2)
-    reply_markup = InlineKeyboardMarkup(all_buttons)
+    reply_markup = InlineKeyboardMarkup([buttons1, buttons2])
     return text, reply_markup
 
 # 设置模型选择菜单
@@ -643,18 +648,44 @@ async def set_audio_model_handle(update: Update, context: CallbackContext):
 
 def get_image_model_menu(user_id: int):
     current_model = db.get_user_attribute(user_id, "current_image_model")
-    text = "\n选择图像模型:"
+    current_image_quality = db.get_user_attribute(user_id, "current_image_quality")
+    current_image_style = db.get_user_attribute(user_id, "current_image_style")
+    current_image_size = db.get_user_attribute(user_id, "current_image_size")
+    text = "\n选择图像模型和图像参数:"
     # buttons to choose models
-    buttons = []
+    buttons1 = []
     for model_key in config.models["available_image_models"]:
         title = config.models["info"][model_key]["name"]
         if model_key == current_model:
             title = "✅ " + title
-
-        buttons.append(
+        buttons1.append(
             InlineKeyboardButton(title, callback_data=f"set_image_model|{model_key}")
         )
-    reply_markup = InlineKeyboardMarkup([buttons])
+    buttons2 = []
+    for model_key in config.models["available_image_quality"]:
+        title = model_key
+        if model_key == current_image_quality:
+            title = "✅ " + model_key
+        buttons2.append(
+            InlineKeyboardButton(title, callback_data=f"set_image_quality|{model_key}")
+        )
+    buttons3 = []
+    for model_key in config.models["available_image_style"]:
+        title = model_key
+        if model_key == current_image_style:
+            title = "✅ " + model_key
+        buttons3.append(
+            InlineKeyboardButton(title, callback_data=f"set_image_style|{model_key}")
+        )
+    buttons4 = []
+    for model_key in config.models["available_image_size"]:
+        title = model_key
+        if model_key == current_image_size:
+            title = "✅ " + model_key
+        buttons4.append(
+            InlineKeyboardButton(title, callback_data=f"set_image_size|{model_key}")
+        )
+    reply_markup = InlineKeyboardMarkup([buttons1, buttons2, buttons3, buttons4])
     return text, reply_markup
 
 # 设置模型选择菜单
@@ -665,8 +696,15 @@ async def set_image_model_handle(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
-    _, model_key = query.data.split("|")
-    db.set_user_attribute(user_id, "current_image_model", model_key)
+    title, model_key = query.data.split("|")
+    if "model" in title:
+        db.set_user_attribute(user_id, "current_image_model", model_key)
+    if "quality" in title:
+        db.set_user_attribute(user_id, "current_image_quality", model_key)
+    if "style" in title:
+        db.set_user_attribute(user_id, "current_image_style", model_key)
+    if "size" in title:
+        db.set_user_attribute(user_id, "current_image_size", model_key)
 
     text, reply_markup = get_image_model_menu(user_id)
     try:

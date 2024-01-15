@@ -2,10 +2,6 @@ import yaml
 import dotenv
 from pathlib import Path
 
-default_model = "gpt-4-1106-preview"
-default_audio_model = "tts-1"
-default_image_model = "dall-e-2"
-
 config_dir = Path(__file__).parent.parent.resolve() / "config"
 
 # load yaml config
@@ -14,6 +10,11 @@ with open(config_dir / "config.yml", 'rb') as f:
 
 # load .env config
 config_env = dotenv.dotenv_values(config_dir / "config.env")
+
+chat_default_model = config_yaml["chat_default_model"]
+tts_default_model = config_yaml["tts_default_model"]
+image_default_model = config_yaml["image_default_model"]
+whisper_default_model = config_yaml["whisper_default_model"]
 
 # config parameters
 telegram_token = config_yaml["telegram_token"]

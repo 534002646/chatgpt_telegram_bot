@@ -14,7 +14,7 @@ openai = AsyncOpenAI(
 )
 
 class ChatGPT:
-    def __init__(self, model=config.default_model):
+    def __init__(self, model=config.chat_default_model):
         assert model in config.models["available_text_models"], f"未知模型： {model}"
         self.model = model
 
@@ -50,7 +50,7 @@ class ChatGPT:
         answer = answer.strip()
         return answer
 
-    def _count_tokens_from_messages(self, messages, answer, model=config.default_model):
+    def _count_tokens_from_messages(self, messages, answer, model=config.chat_default_model):
         try:
             encoding = tiktoken.encoding_for_model(model)
             if "gpt-3.5" in model:
@@ -89,7 +89,7 @@ class ChatGPT:
            logger.error(f"统计tokens出现异常. {e}")
         return 0,0
     
-    def __count_tokens_vision(self, image_bytes: bytes, model=config.default_model) -> int:
+    def __count_tokens_vision(self, image_bytes: bytes, model=config.chat_default_model) -> int:
         image_file = io.BytesIO(image_bytes)
         image = Image.open(image_file)
         if "gpt-4" not in model:
@@ -154,18 +154,18 @@ class ChatGPT:
 
 #语音翻译
 async def transcribe_audio(audio_buf) -> str:
-    r = await openai.audio.transcriptions.create(model="whisper-1", file=audio_buf)
+    r = await openai.audio.transcriptions.create(model=config.whisper_default_model, file=audio_buf)
     return r.text or ""
 
 #生成图片
-async def generate_images(prompt: str, model: str):
+async def generate_images(prompt: str, model: str, image_quality, image_style, image_size):
     r = await openai.images.generate(
         prompt=prompt, 
         n=config.image_count,
         model=model,
-        quality=config.image_quality,
-        style=config.image_style,
-        size=config.image_size)
+        quality=image_quality,
+        style=image_style,
+        size=image_size)
     return [item.url for item in r.data]
 
 #生成语言

@@ -4,7 +4,9 @@ openai_api_base: null  # leave null to use default api base or you can put your 
 allowed_telegram_usernames: [5289366783]  # if empty, the bot is available to anyone. pass a username string to allow it and/or user ids as positive integers and/or channel ids as negative integers
 new_dialog_timeout: 600  # 会话超时时间
 n_chat_modes_per_page: 5
+chat_default_model: "gpt-4-1106-preview"
 #生成图片
+image_default_model: "dall-e-2"
 image_count: 1 #返回生成的图片数量
 image_quality: "standard" #图像质量 standard hd
 image_style: "vivid" #图像风格
@@ -13,7 +15,10 @@ image_size: "1024x1024" #512x512 1024x1024 1024x1792 1792x1024
 vision_detail: "auto" #解释图片质量 low,high,auto
 vision_prompt: "请给我提供图片里面的详细信息，如果有文字请翻译成简体中文，如果图片里有人请告诉我是谁，如果图片里有地点请告诉我地点"
 #文字转语音
+tts_default_model: "tts-1"
 tts_voice: "alloy" #语音风格 alloy echo fable onyx nova shimmer
 tts_voice_formats: "opus" #语音格式 mp3 opus aac flac
+#语音转文字
+whisper_default_model: "whisper-1"
 
 context_len: 5 #上下文长度
