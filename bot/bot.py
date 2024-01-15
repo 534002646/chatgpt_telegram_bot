@@ -518,7 +518,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
-async def show_chat_modes_handle(update: Update, context: CallbackContext):
+async def show_chat_modes_callback_handle(update: Update, context: CallbackContext):
      await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
      if await is_previous_message_not_answered_yet(update.callback_query, context): return
 
@@ -746,13 +746,12 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 async def edited_message_handle(update: Update, context: CallbackContext):
     if update.edited_message.chat.type == "private":
         text = "🥲 遗憾的是，不支持消息<b>编辑</b>"
-        await update.message.chat.send_action(action=ChatAction.TYPING)
+        await update.edited_message.chat.send_action(action=ChatAction.TYPING)
         await update.edited_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 # 错误处理
 async def error_handle(update: Update, context: CallbackContext) -> None:
-    logger.error(msg="处理更新时出现异常：", exc_info=context.error)
-
+    logger.error(msg="处理更新时引发异常：", exc_info=context.error)
     try:
         # collect error message
         tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
@@ -767,12 +766,15 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
         # split text into multiple messages due to 4096 character limit
         for message_chunk in split_text_into_chunks(message, 4096):
             try:
-                await context.bot.send_message(update.effective_chat.id, message_chunk, parse_mode=ParseMode.HTML)
+                await update.message.reply_text(message_chunk, parse_mode=ParseMode.HTML)
+                # await context.bot.send_message(update.effective_chat.id, message_chunk, parse_mode=ParseMode.HTML)
             except telegram.error.BadRequest:
+                await update.message.reply_text(message_chunk, parse_mode=ParseMode.MARKDOWN)
                 # answer has invalid characters, so we send it without parse_mode
-                await context.bot.send_message(update.effective_chat.id, message_chunk)
+                # await context.bot.send_message(update.effective_chat.id, message_chunk)
     except:
-        await context.bot.send_message(update.effective_chat.id, "处理程序中出现一些错误")
+        await update.message.reply_text("处理程序中出现一些错误", parse_mode=ParseMode.HTML)
+        # await context.bot.send_message(update.effective_chat.id, "处理程序中出现一些错误")
 
 async def post_init(application: Application):
     await application.bot.set_my_commands([
@@ -826,11 +828,11 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("mode", show_chat_modes_handle, filters=user_filter))
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
 
-    application.add_handler(CallbackQueryHandler(show_chat_modes_handle, pattern="^show_chat_modes"))
+    application.add_handler(CallbackQueryHandler(show_chat_modes_callback_handle, pattern="^show_chat_modes"))
     application.add_handler(CallbackQueryHandler(set_chat_mode_handle, pattern="^set_chat_mode"))
     application.add_handler(CallbackQueryHandler(set_model_handle, pattern="^set_model"))
     application.add_handler(CallbackQueryHandler(set_image_model_handle, pattern="^set_image_model"))
-    application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_model"))
+    application.add_handler(CallbackQueryHandler(set_audio_model_handle))
 
     application.add_error_handler(error_handle)
     # start the bot
