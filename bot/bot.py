@@ -4,6 +4,7 @@ import asyncio
 import traceback
 import html
 import json
+import signal
 from datetime import datetime
 from PIL import Image
 
@@ -883,9 +884,13 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(set_audio_model_handle, pattern="^set_audio_style"))
 
     application.add_error_handler(error_handle)
+    signal.signal(signal.SIGTERM, exitHandler(application = application))
     # start the bot
     application.run_polling()
 
+def exitHandler(signum, frame, application:Application):
+    application.shutdown()
+    print("退出程序. signum = ", signum)
 
 if __name__ == "__main__":
     run_bot()
